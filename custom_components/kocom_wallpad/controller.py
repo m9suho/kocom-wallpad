@@ -152,7 +152,10 @@ class KocomController:
 
         dev_state = None
         if frame.dev_type == DeviceType.LIGHT:
-            dev_state = self._handle_switch(frame)
+            if frame.dev_room == 0xFF:
+                dev_state = self._handle_cutoff_switch(frame)
+            else:
+                dev_state = self._handle_switch(frame)
         elif frame.dev_type == DeviceType.OUTLET:
             dev_state = self._handle_switch(frame)
         elif frame.dev_type == DeviceType.THERMOSTAT:
@@ -182,6 +185,29 @@ class KocomController:
             dev_state._packet = packet
             self.gateway.on_device_state(dev_state)
             
+
+    def _handle_cutoff_switch(self, frame: PacketFrame) -> DeviceState:
+        # Use LIGHTCUTOFF type to distinguish from regular lights in room 0
+        key = DeviceKey(
+            device_type=DeviceType.LIGHTCUTOFF,
+            room_index=0,
+            device_index=0,
+            sub_type=SubType.NONE,
+        )
+
+        # Handle both status update (0x00) and direct commands (0x65, 0x66)
+        if frame.command == 0x00:
+            # Status update: payload[0] == 0xFF means ON
+            state = frame.payload[0] == 0xFF
+        elif frame.command in (0x65, 0x66):
+            # Direct command: 0x65 = ON, 0x66 = OFF
+            state = frame.command == 0x65
+        else:
+            return None
+
+        dev = DeviceState(key=key, platform=Platform.LIGHT, attribute={}, state=state)
+        dev._is_register = True  # Always register cutoff switch
+        return dev
 
     def _handle_switch(self, frame: PacketFrame) -> List[DeviceState]:
         states: List[DeviceState] = []
@@ -538,6 +564,9 @@ class KocomController:
 
     def build_expectation(self, key: DeviceKey, action: str, **kwargs: Any) -> Tuple[Predicate, float]:
         dt = key.device_type
+        # LIGHTCUTOFF is a broadcast command; the wallpad never confirms it
+        if dt == DeviceType.LIGHTCUTOFF:
+            return lambda _d: True, 0.0  # Immediate success, no wait
         if dt in (DeviceType.LIGHT, DeviceType.OUTLET, DeviceType.ELEVATOR):
             return self._expect_for_switch_like(key, action, **kwargs)
         if dt == DeviceType.VENTILATION:
@@ -561,7 +590,17 @@ class KocomController:
         command = bytes([0x00])
         data = bytearray(8)
 
-        if device_type in (DeviceType.LIGHT, DeviceType.OUTLET):
+        if device_type == DeviceType.LIGHTCUTOFF:
+            # Light cutoff switch: use room 0xFF and special commands
+            dest_dev = bytes([0x0E])  # Light device type
+            dest_room = bytes([0xFF])  # Cutoff special room
+            if action == "turn_on":
+                command = bytes([0x65])  # Turn on command
+                data = bytearray([0x00] * 8)  # All 0x00
+            else:
+                command = bytes([0x66])  # Turn off command
+                data = bytearray([0xFF] * 8)  # All 0xFF
+        elif device_type in (DeviceType.LIGHT, DeviceType.OUTLET):
             if device_type not in REV_DT_MAP:
                 raise ValueError(f"Invalid device type: {device_type}")
             dest_dev = bytes([REV_DT_MAP[device_type]])

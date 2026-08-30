@@ -27,6 +27,9 @@
             },
             "dimminglight": {
                 "name": "디밍 조명 {id}"
+            },
+            "lightcutoff": {
+                "name": "일괄소등 {id}"
             }
         },
         "switch": {
@@ -55,7 +58,7 @@
                 "name": "엘리베이터 방향 {id}"
             },
             "elevator-floor": {
-                "name":"엘리베이터 층수 {id}"
+                "name": "엘리베이터 층수 {id}"
             },
             "airquality-co2": {
                 "name": "공기질 CO2 {id}"
