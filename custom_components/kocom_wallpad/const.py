@@ -12,6 +12,7 @@ DOMAIN = "kocom_wallpad"
 PLATFORMS = [
     Platform.LIGHT,
     Platform.SWITCH,
+    Platform.CLIMATE,
     Platform.FAN,
     Platform.SENSOR,
     Platform.BINARY_SENSOR,

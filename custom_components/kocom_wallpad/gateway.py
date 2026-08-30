@@ -347,9 +347,15 @@ class KocomGateway:
 
                     self._last_tx_monotonic = asyncio.get_running_loop().time()
 
-                    # 확인 대기 (timeout<=0: broadcast 명령 등 확인응답이 없는 경우 즉시 성공)
+                    # 확인 대기 (timeout<=0: broadcast 명령 등 확인응답이 없는 경우)
+                    # 확인응답이 없으면 유실 감지가 불가능하므로, 같은 패킷을
+                    # SEND_RETRY_MAX회 반복 전송해 전달 확률을 높인 뒤 성공 처리
                     if timeout <= 0:
-                        LOGGER.debug("Command '%s' sent, no confirmation expected (attempt %d).", item.action, attempt)
+                        LOGGER.debug("Command '%s' sent, no confirmation expected (attempt %d/%d).",
+                                     item.action, attempt, SEND_RETRY_MAX)
+                        if attempt < SEND_RETRY_MAX:
+                            await asyncio.sleep(max(SEND_RETRY_GAP, 0.3))
+                            continue
                         success = True
                         break
                     try:
