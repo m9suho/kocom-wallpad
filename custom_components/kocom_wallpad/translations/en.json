@@ -27,6 +27,9 @@
             },
             "dimminglight": {
                 "name": "Dimming Light {id}"
+            },
+            "lightcutoff": {
+                "name": "Light Cut-off {id}"
             }
         },
         "switch": {
