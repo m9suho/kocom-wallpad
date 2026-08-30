@@ -347,7 +347,11 @@ class KocomGateway:
 
                     self._last_tx_monotonic = asyncio.get_running_loop().time()
 
-                    # 확인 대기
+                    # 확인 대기 (timeout<=0: broadcast 명령 등 확인응답이 없는 경우 즉시 성공)
+                    if timeout <= 0:
+                        LOGGER.debug("Command '%s' sent, no confirmation expected (attempt %d).", item.action, attempt)
+                        success = True
+                        break
                     try:
                         _ = await self._wait_for_confirmation(item.key, expect_predicate, timeout)
                         LOGGER.debug("Command '%s' confirmed (attempt %d).", item.action, attempt)
