@@ -21,6 +21,7 @@ from .const import (
     SEND_RETRY_MAX,
     SEND_RETRY_GAP,
     DeviceType,
+    SubType,
 )
 from .models import DeviceKey, DeviceState
 from .transport import AsyncConnection
@@ -169,6 +170,8 @@ class KocomGateway:
             raise
 
     async def async_send_action(self, key: DeviceKey, action: str, **kwargs) -> bool:
+        if key.device_type == DeviceType.LIGHTCUTOFF:
+            return await self._async_send_cutoff(action)
         loop = asyncio.get_running_loop()
         item = _CmdItem(key=key, action=action, kwargs=kwargs, future=loop.create_future())
         await self._tx_queue.put(item)
@@ -180,6 +183,41 @@ class KocomGateway:
             if not item.future.done():
                 item.future.set_result(False)
             raise
+
+    async def _async_send_cutoff(self, action: str) -> bool:
+        """일괄소등 처리.
+
+        이 월패드는 RS485 일괄소등 broadcast 명령(0x65/0x66, room 0xFF)에
+        반응하지 않으므로, 등록된 조명 중 켜져 있는 것에 개별 OFF 명령을
+        전송한다. turn_off(일괄소등 해제)는 조명을 복원하지 않고 엔티티
+        상태만 해제한다.
+        """
+        success = True
+        if action == "turn_on":
+            targets = [
+                dev.key
+                for dev in self.get_devices_from_platform(Platform.LIGHT)
+                if dev.key.device_type == DeviceType.LIGHT and dev.state is True
+            ]
+            LOGGER.debug("Cutoff: turning off %d lights individually", len(targets))
+            for light_key in targets:
+                ok = await self.async_send_action(light_key, "turn_off")
+                if not ok:
+                    LOGGER.warning("Cutoff: failed to turn off %s", light_key)
+                    success = False
+        self._update_cutoff_state(action == "turn_on" and success)
+        return success
+
+    def _update_cutoff_state(self, state: bool) -> None:
+        key = DeviceKey(
+            device_type=DeviceType.LIGHTCUTOFF,
+            room_index=0,
+            device_index=0,
+            sub_type=SubType.NONE,
+        )
+        dev = DeviceState(key=key, platform=Platform.LIGHT, attribute={}, state=state)
+        dev._is_register = True
+        self.on_device_state(dev)
 
     def on_device_state(self, dev: DeviceState) -> None:
         allow_insert = True
