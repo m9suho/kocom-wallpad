@@ -266,7 +266,13 @@ class KocomGateway:
         return self.registry.all_by_platform(platform)
 
     async def _async_put_entity_dispatch_packet(self, entity_id: str) -> None:
-        state = restore_state.async_get(self.hass).last_states.get(entity_id)
+        restore_data = restore_state.async_get(self.hass)
+        # HA 2026.11+ replaced RestoreStateData.last_states with
+        # async_get_stored_state(); keep the old lookup for older cores.
+        if hasattr(restore_data, "async_get_stored_state"):
+            state = restore_data.async_get_stored_state(entity_id)
+        else:
+            state = restore_data.last_states.get(entity_id)
         if not (state and state.extra_data):
             return
         packet = state.extra_data.as_dict().get("packet")
